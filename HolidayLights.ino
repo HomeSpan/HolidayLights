@@ -69,79 +69,67 @@ struct Pixel_Light : Service::LightBulb {      // Addressable RGB Pixel
 
 ///////////////////////////////
 
-//struct Pixel_Strand : Service::LightBulb {      // Addressable RGB Pixel Strand of nPixel Pixels - allows for special effects controlled by custom characreristic
-// 
-//  Characteristic::On power{1,true};
-//  Characteristic::Hue H{0,true};
-//  Characteristic::Saturation S{100,true};
-//  Characteristic::Brightness V{100,true};
-//  Pixel *pixel; 
-//  int nPixels;                                 // number of Pixels in Strand (default=1)
-//  
-//  Pixel_Strand(int pin, int nPixels=1) : Service::LightBulb(){
-//
-//    V.setRange(5,100,1);                      // sets the range of the Brightness to be from a min of 5%, to a max of 100%, in steps of 1%
-//    pixel=new Pixel(pin);                     // creates pixel LED on specified pin using default timing parameters suitable for most SK68xx LEDs
-//    this->nPixels=nPixels;                    // store number of Pixels in Strand
-//    update();                                 // manually call update() to set pixel with restored initial values
-//  }
-//
-//  boolean update() override {
-//
-//    int p=power.getNewVal();
-//    
-//    float h=H.getNewVal<float>();                // range = [0,360]
-//    float s=S.getNewVal<float>();                // range = [0,100]
-//    float v=V.getNewVal<float>();                // range = [0,100]
-//
-//    pixel->setHSV(h*p, s*p, v*p, nPixels);       // sets all nPixels to HSV colors
-//          
-//    return(true);  
-//  }
-//};
-
-///////////////////////////////
-
 struct Pixel_Strand : Service::LightBulb {      // Addressable RGB Pixel Strand of nPixel Pixels - Knight Rider Effect
+
+  struct SpecialEffect {
+    Pixel_Strand *px;
+
+    SpecialEffect(Pixel_Strand *px, String name){
+      this->px=px;
+      Serial.printf("Adding Effect %d: %s\n",px->Effects.size()+1,name.c_str());   
+    }
+    
+    virtual void init(){}
+    virtual uint32_t update(){return(60000);}
+    virtual int requiredBuffer(){return(0);}
+  };  
  
   Characteristic::On power{0,true};
   Characteristic::Hue H{0,true};
   Characteristic::Saturation S{100,true};
+  Characteristic::Brightness V{100,true};
   Characteristic::Selector effect{1,true};
+
+  vector<SpecialEffect *> Effects;
   
   Pixel *pixel; 
   int nPixels;                                 
   uint32_t *colors;
-  int phase=0;
-  int dir=1;
-  uint32_t alarmTime=0;
+  uint32_t alarmTime;
   
   Pixel_Strand(int pin, int nPixels) : Service::LightBulb(){
 
     pixel=new Pixel(pin);                     // creates pixel LED on specified pin using default timing parameters suitable for most SK68xx LEDs
     this->nPixels=nPixels;                    // store number of Pixels in Strand
 
-    effect.setUnit("");
-    effect.setDescription("Color Effect");
-    effect.setRange(1,5,1);    
+    Effects.push_back(new ManualControl(this));
+    Effects.push_back(new KnightRider(this));
 
-    colors=(uint32_t *)calloc(2*nPixels-1,sizeof(uint32_t));   // storage for dynamic pixel pattern
+    effect.setUnit("");                       // configures custom "Selector" characteristic for use with Eve HomeKit
+    effect.setDescription("Color Effect");
+    effect.setRange(1,Effects.size()+3,1);
+
+    V.setRange(5,100,1);                      // sets the range of the Brightness to be from a min of 5%, to a max of 100%, in steps of 1%
+
+    int bufSize=0;
+    
+    for(int i=0;i<Effects.size();i++)
+      bufSize=Effects[i]->requiredBuffer()>bufSize?Effects[i]->requiredBuffer():bufSize;
+
+    colors=(uint32_t *)calloc(bufSize,sizeof(uint32_t));   // storage for dynamic pixel pattern
+
+    Serial.printf("Configured Pixel_Strand on pin %d with %d pixels and %d effects.  Color buffer = %d pixels\n\n",pin,nPixels,Effects.size(),bufSize);
+
     update();
   }
 
   boolean update() override {
 
     if(!power.getNewVal()){
-      pixel->setRGB(0,0,0,8);
+      pixel->setRGB(0,0,0,nPixels);
     } else {
-
-      switch(effect.getNewVal()){
-
-        case 1:
-          KnightRider(true);
-        break;
-        
-      }
+      Effects[effect.getNewVal()-1]->init();
+      alarmTime=millis()+Effects[effect.getNewVal()-1]->update();
     }
     
     return(true);  
@@ -149,36 +137,50 @@ struct Pixel_Strand : Service::LightBulb {      // Addressable RGB Pixel Strand 
 
   void loop() override {
 
-    if(millis()>alarmTime && power.getVal()){
-      switch(effect.getNewVal()){
-
-        case 1:
-          KnightRider(false);
-        break;
-        
-      }
-
-    }
+    if(millis()>alarmTime && power.getVal())
+      alarmTime=millis()+Effects[effect.getNewVal()-1]->update();
     
   }
 
-  void KnightRider(boolean init){
-    if(init){
-      float level=100;
-      for(int i=0;i<nPixels;i++,level/=2.5){
-        colors[nPixels+i-1]=pixel->getColorHSV(H.getNewVal<float>(),S.getNewVal<float>(),level);
-        colors[nPixels-i-1]=colors[nPixels+i-1];
+//////////////
+
+  struct KnightRider : SpecialEffect {
+
+    int phase=0;
+    int dir=1;
+  
+    KnightRider(Pixel_Strand *px) : SpecialEffect{px,"KnightRider"} {}
+
+    void init() override {
+      float level=px->V.getNewVal<float>();
+      for(int i=0;i<px->nPixels;i++,level/=2.5){
+        px->colors[px->nPixels+i-1]=px->pixel->getColorHSV(px->H.getNewVal<float>(),px->S.getNewVal<float>(),level);
+        px->colors[px->nPixels-i-1]=px->colors[px->nPixels+i-1];      
       }
-    } else {
-      alarmTime=millis()+80;
-      pixel->setColors(colors+phase,nPixels);
+    }
+
+    uint32_t update() override {
+      px->pixel->setColors(px->colors+phase,px->nPixels);
       if(phase==7)
         dir=-1;
       else if(phase==0)
         dir=1;
-      phase+=dir;      
+      phase+=dir;
+      return(80);      
     }
-  }
+
+    int requiredBuffer() override {return(px->nPixels*2-1);}
+ 
+  };
+  
+//////////////
+
+  struct ManualControl : SpecialEffect {
+  
+    ManualControl(Pixel_Strand *px) : SpecialEffect{px,"Manual Control"} {}
+
+    void init() override {px->pixel->setHSV(px->H.getNewVal<float>(),px->S.getNewVal<float>(),px->V.getNewVal<float>(),px->nPixels);}
+  };
 
 };
 
@@ -216,7 +218,7 @@ void setup() {
   new Service::HAPProtocolInformation();
     new Characteristic::Version("1.1.0");
 
-  new Pixel_Strand(1,8);               // create 8-Pixel Strand attached to pin 1  
+  new Pixel_Strand(1,8);
 
 }
 
