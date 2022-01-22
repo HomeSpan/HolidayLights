@@ -104,10 +104,11 @@ struct Pixel_Strand : Service::LightBulb {      // Addressable RGB Pixel Strand 
 
     Effects.push_back(new ManualControl(this));
     Effects.push_back(new KnightRider(this));
+    Effects.push_back(new Random(this));
 
     effect.setUnit("");                       // configures custom "Selector" characteristic for use with Eve HomeKit
     effect.setDescription("Color Effect");
-    effect.setRange(1,Effects.size()+3,1);
+    effect.setRange(1,Effects.size(),1);
 
     V.setRange(5,100,1);                      // sets the range of the Brightness to be from a min of 5%, to a max of 100%, in steps of 1%
 
@@ -180,6 +181,21 @@ struct Pixel_Strand : Service::LightBulb {      // Addressable RGB Pixel Strand 
     ManualControl(Pixel_Strand *px) : SpecialEffect{px,"Manual Control"} {}
 
     void init() override {px->pixel->setHSV(px->H.getNewVal<float>(),px->S.getNewVal<float>(),px->V.getNewVal<float>(),px->nPixels);}
+  };
+
+//////////////
+
+  struct Random : SpecialEffect {
+  
+    Random(Pixel_Strand *px) : SpecialEffect{px,"Random"} {}
+
+    uint32_t update() override {
+      esp_fill_random(px->colors,4*px->nPixels);
+      px->pixel->setColors(px->colors,px->nPixels);
+      return(1000);
+    }
+
+    int requiredBuffer() override {return(px->nPixels);}
   };
 
 };
