@@ -31,6 +31,29 @@
 // addressable RGB LEDs, such as the SK68xx or WS28xx models found in many devices,
 // including the Espressif ESP32, ESP32-S2, and ESP32-C3 development boards.
 
+// Also demonstrates how to take advantage of the Eve HomeKit App's ability to render
+// a generic custom Characteristic.  The sketch uses a custom Characterstic to create
+// a "selector" button that enables to the user to select which special effect to run
+
+
+// IMPORTANT:  YOU LIKELY WILL NEED TO CHANGE THE PIN NUMBERS BELOW TO MATCH YOUR SPECIFIC ESP32/S2/C3 BOARD
+
+#if defined(CONFIG_IDF_TARGET_ESP32C3)
+
+  #define NEOPIXEL_PIN    1 
+
+#elif defined(CONFIG_IDF_TARGET_ESP32S2)
+
+  #define NEOPIXEL_PIN    7
+
+#elif defined(CONFIG_IDF_TARGET_ESP32)
+
+  #define NEOPIXEL_PIN    21
+  
+#endif
+
+#define NUM_PIXELS        8   // number of RGB Pixels in Pixel Strand
+
 #include "HomeSpan.h"
 #include "extras/Pixel.h"                       // include the HomeSpan Pixel class
 
@@ -38,38 +61,7 @@ CUSTOM_CHAR(Selector, 00000001-0001-0001-0001-46637266EA00, PR+PW+EV, UINT8, 1, 
 
 ///////////////////////////////
 
-struct Pixel_Light : Service::LightBulb {      // Addressable RGB Pixel
- 
-  Characteristic::On power{0,true};
-  Characteristic::Hue H{0,true};
-  Characteristic::Saturation S{0,true};
-  Characteristic::Brightness V{100,true};
-  Pixel *pixel; 
-  
-  Pixel_Light(int pin) : Service::LightBulb(){
-
-    V.setRange(5,100,1);                      // sets the range of the Brightness to be from a min of 5%, to a max of 100%, in steps of 1%
-    pixel=new Pixel(pin);                     // creates pixel LED on specified pin using default timing parameters suitable for most SK68xx LEDs
-    update();                                 // manually call update() to set pixel with restored initial values
-  }
-
-  boolean update() override {
-
-    int p=power.getNewVal();
-    
-    float h=H.getNewVal<float>();       // range = [0,360]
-    float s=S.getNewVal<float>();       // range = [0,100]
-    float v=V.getNewVal<float>();       // range = [0,100]
-
-    pixel->setHSV(h*p, s*p, v*p);       // sets pixel to HSV colors
-          
-    return(true);  
-  }
-};
-
-///////////////////////////////
-
-struct Pixel_Strand : Service::LightBulb {      // Addressable RGB Pixel Strand of nPixel Pixels - Knight Rider Effect
+struct Pixel_Strand : Service::LightBulb {      // Addressable RGB Pixel Strand of nPixel Pixels
 
   struct SpecialEffect {
     Pixel_Strand *px;
@@ -190,7 +182,8 @@ struct Pixel_Strand : Service::LightBulb {      // Addressable RGB Pixel Strand 
     Random(Pixel_Strand *px) : SpecialEffect{px,"Random"} {}
 
     uint32_t update() override {
-      esp_fill_random(px->colors,4*px->nPixels);
+      for(int i=0;i<px->nPixels;i++)
+        px->colors[i]=px->pixel->getColorHSV((esp_random()%6)*60,100,px->V.getNewVal<float>());
       px->pixel->setColors(px->colors,px->nPixels);
       return(1000);
     }
@@ -205,36 +198,22 @@ struct Pixel_Strand : Service::LightBulb {      // Addressable RGB Pixel Strand 
 void setup() {
   
   Serial.begin(115200);
- 
-  homeSpan.begin(Category::Lighting,"RGB Pixels");
 
-  new SpanAccessory();
-    new Service::AccessoryInformation();
-      new Characteristic::Name("RGB Pixel");
-      new Characteristic::Manufacturer("HomeSpan");
-      new Characteristic::SerialNumber("123-ABC");
-      new Characteristic::Model("SK68 LED");
-      new Characteristic::FirmwareRevision("1.0");
-      new Characteristic::Identify();
-
-  new Service::HAPProtocolInformation();
-    new Characteristic::Version("1.1.0");
-
-  new Pixel_Light(8);                         // create single Pixel attached to pin 8
+  homeSpan.begin(Category::Lighting,"Holiday Lights");                     
       
   new SpanAccessory();
     new Service::AccessoryInformation();
-      new Characteristic::Name("Pixel Strand");
+      new Characteristic::Name("Holiday Lights");
       new Characteristic::Manufacturer("HomeSpan");
       new Characteristic::SerialNumber("123-ABC");
-      new Characteristic::Model("8-LED NeoPixel");
+      new Characteristic::Model("NeoPixel RGB LEDs");
       new Characteristic::FirmwareRevision("1.0");
       new Characteristic::Identify();
 
   new Service::HAPProtocolInformation();
     new Characteristic::Version("1.1.0");
 
-  new Pixel_Strand(1,8);
+  new Pixel_Strand(NEOPIXEL_PIN,NUM_PIXELS);
 
 }
 
