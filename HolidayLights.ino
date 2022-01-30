@@ -52,7 +52,7 @@
   
 #endif
 
-#define NUM_PIXELS        8   // number of RGB Pixels in Pixel Strand
+#define NUM_PIXELS        60   // number of RGBW Pixels in Pixel Strand
 
 #include "HomeSpan.h"
 #include "extras/Pixel.h"                       // include the HomeSpan Pixel class
@@ -61,7 +61,7 @@ CUSTOM_CHAR(Selector, 00000001-0001-0001-0001-46637266EA00, PR+PW+EV, UINT8, 1, 
 
 ///////////////////////////////
 
-struct Pixel_Strand : Service::LightBulb {      // Addressable RGB Pixel Strand of nPixel Pixels
+struct Pixel_Strand : Service::LightBulb {      // Addressable RGBW Pixel Strand of nPixel Pixels
 
   struct SpecialEffect {
     Pixel_Strand *px;
@@ -91,12 +91,13 @@ struct Pixel_Strand : Service::LightBulb {      // Addressable RGB Pixel Strand 
   
   Pixel_Strand(int pin, int nPixels) : Service::LightBulb(){
 
-    pixel=new Pixel(pin);                     // creates pixel LED on specified pin using default timing parameters suitable for most SK68xx LEDs
+    pixel=new Pixel(pin,Pixel::RGBW);                     // creates pixel LED on specified pin using default timing parameters suitable for most SK68xx LEDs
     this->nPixels=nPixels;                    // store number of Pixels in Strand
 
     Effects.push_back(new ManualControl(this));
     Effects.push_back(new KnightRider(this));
     Effects.push_back(new Random(this));
+    Effects.push_back(new Twinkle(this));
 
     effect.setUnit("");                       // configures custom "Selector" characteristic for use with Eve HomeKit
     effect.setDescription("Color Effect");
@@ -119,7 +120,7 @@ struct Pixel_Strand : Service::LightBulb {      // Addressable RGB Pixel Strand 
   boolean update() override {
 
     if(!power.getNewVal()){
-      pixel->setRGB(0,0,0,nPixels);
+      pixel->setRGB(0,0,0,0,nPixels);
     } else {
       Effects[effect.getNewVal()-1]->init();
       alarmTime=millis()+Effects[effect.getNewVal()-1]->update();
@@ -146,7 +147,7 @@ struct Pixel_Strand : Service::LightBulb {      // Addressable RGB Pixel Strand 
 
     void init() override {
       float level=px->V.getNewVal<float>();
-      for(int i=0;i<px->nPixels;i++,level/=2.5){
+      for(int i=0;i<px->nPixels;i++,level*=0.8){
         px->colors[px->nPixels+i-1]=px->pixel->getColorHSV(px->H.getNewVal<float>(),px->S.getNewVal<float>(),level);
         px->colors[px->nPixels-i-1]=px->colors[px->nPixels+i-1];      
       }
@@ -154,12 +155,12 @@ struct Pixel_Strand : Service::LightBulb {      // Addressable RGB Pixel Strand 
 
     uint32_t update() override {
       px->pixel->setColors(px->colors+phase,px->nPixels);
-      if(phase==7)
+      if(phase==px->nPixels-1)
         dir=-1;
       else if(phase==0)
         dir=1;
       phase+=dir;
-      return(80);      
+      return(20);      
     }
 
     int requiredBuffer() override {return(px->nPixels*2-1);}
@@ -172,7 +173,7 @@ struct Pixel_Strand : Service::LightBulb {      // Addressable RGB Pixel Strand 
   
     ManualControl(Pixel_Strand *px) : SpecialEffect{px,"Manual Control"} {}
 
-    void init() override {px->pixel->setHSV(px->H.getNewVal<float>(),px->S.getNewVal<float>(),px->V.getNewVal<float>(),px->nPixels);}
+    void init() override {px->pixel->setHSV(px->H.getNewVal<float>(),px->S.getNewVal<float>(),px->V.getNewVal<float>(),0,px->nPixels);}
   };
 
 //////////////
@@ -190,6 +191,47 @@ struct Pixel_Strand : Service::LightBulb {      // Addressable RGB Pixel Strand 
 
     int requiredBuffer() override {return(px->nPixels);}
   };
+
+
+///////////////////////////////
+
+  struct Twinkle : SpecialEffect {
+
+    int8_t *dir;
+ 
+    Twinkle(Pixel_Strand *px) : SpecialEffect{px,"Twinkle"} {
+      dir=(int8_t *)calloc(px->nPixels,sizeof(int8_t));
+    }
+
+    void init() override {
+      for(int i=0;i<px->nPixels;i++){
+        px->colors[i]=0;
+        dir[i]=0;
+      }
+    }
+
+    uint32_t update() override {
+      for(int i=0;i<px->nPixels;i++){
+        if(px->colors[i]==0){
+          if(esp_random()%200==0)
+            dir[i]=15;
+          else
+            dir[i]=0;
+        } else
+        if(px->colors[i]==255 || esp_random()%10==0){
+          dir[i]=-15;
+        }
+        px->colors[i]+=dir[i];
+      }
+      px->pixel->setColors(px->colors,px->nPixels);
+    return(50);  
+    }
+
+    int requiredBuffer() override {return(px->nPixels);}
+ 
+  };
+
+///////////////////////////////
 
 };
 
