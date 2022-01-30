@@ -98,6 +98,7 @@ struct Pixel_Strand : Service::LightBulb {      // Addressable RGBW Pixel Strand
     Effects.push_back(new KnightRider(this));
     Effects.push_back(new Random(this));
     Effects.push_back(new Twinkle(this));
+    Effects.push_back(new RaceTrack(this));
 
     effect.setUnit("");                       // configures custom "Selector" characteristic for use with Eve HomeKit
     effect.setDescription("Color Effect");
@@ -112,7 +113,7 @@ struct Pixel_Strand : Service::LightBulb {      // Addressable RGBW Pixel Strand
 
     colors=(uint32_t *)calloc(bufSize,sizeof(uint32_t));   // storage for dynamic pixel pattern
 
-    Serial.printf("Configured Pixel_Strand on pin %d with %d pixels and %d effects.  Color buffer = %d pixels\n\n",pin,nPixels,Effects.size(),bufSize);
+    Serial.printf("\nConfigured Pixel_Strand on pin %d with %d pixels and %d effects.  Color buffer = %d pixels\n\n",pin,nPixels,Effects.size(),bufSize);
 
     update();
   }
@@ -229,6 +230,45 @@ struct Pixel_Strand : Service::LightBulb {      // Addressable RGBW Pixel Strand
 
     int requiredBuffer() override {return(px->nPixels);}
  
+  };
+
+///////////////////////////////
+
+  struct RaceTrack : SpecialEffect {
+
+    int H=0;
+    int phase=0;
+    int dir=1;
+
+    RaceTrack(Pixel_Strand *px) : SpecialEffect{px,"RaceTrack"} {}
+
+    uint32_t update() override {
+      for(int i=0;i<px->nPixels;i++){
+        if(i==phase)
+          px->colors[i]=px->pixel->getColorHSV(H,100,px->V.getNewVal<float>());
+        else if(i==px->nPixels-1-phase)
+          px->colors[i]=px->pixel->getColorHSV(H+180,100,px->V.getNewVal<float>());
+        else
+          px->colors[i]=0;
+      }
+
+      px->pixel->setColors(px->colors,px->nPixels);
+      phase=(phase+dir)%px->nPixels;
+      
+      if(phase==0){
+        dir=1;
+        H=(H+10)%360;
+      }
+      else if(phase==px->nPixels-1){
+        dir=-1;
+        H=(H+10)%360;
+      }
+            
+      return(20);
+    }
+
+    int requiredBuffer() override {return(px->nPixels);}
+    
   };
 
 ///////////////////////////////
