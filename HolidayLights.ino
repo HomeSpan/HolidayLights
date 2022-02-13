@@ -38,24 +38,21 @@
 #include "HomeSpan.h"
 #include "extras/Pixel.h"                       // include the HomeSpan Pixel class
 
-// IMPORTANT:  YOU LIKELY WILL NEED TO CHANGE THE PIN NUMBERS BELOW TO MATCH YOUR SPECIFIC ESP32/S2/C3 BOARD
+#if defined(CONFIG_IDF_TARGET_ESP32)
 
-#if defined(CONFIG_IDF_TARGET_ESP32C3)
-  #define NEOPIXEL_PIN    9 
-  
+  #define NEOPIXEL_RGBW_PIN      32
+
 #elif defined(CONFIG_IDF_TARGET_ESP32S2)
-  #define NEOPIXEL_PIN    7
-  
-#elif defined(CONFIG_IDF_TARGET_ESP32)
-  #define NEOPIXEL_PIN    21  
-  
+
+  #define NEOPIXEL_RGBW_PIN      38
+
+#elif defined(CONFIG_IDF_TARGET_ESP32C3)
+
+  #define NEOPIXEL_RGBW_PIN      2
+
 #endif
 
-#define NUM_PIXELS        60   // number of RGBW Pixels in Pixel Strand
-
 CUSTOM_CHAR(Selector, 00000001-0001-0001-0001-46637266EA00, PR+PW+EV, UINT8, 1, 1, 5, false);      // create Custom Characteristic to "select" special effects via Eve App
-
-Pixel::Color BLANK=Pixel::RGB(0,0,0);
 
 ///////////////////////////////
 
@@ -121,7 +118,7 @@ struct Pixel_Strand : Service::LightBulb {      // Addressable RGBW Pixel Strand
   boolean update() override {
 
     if(!power.getNewVal()){
-      pixel->set(BLANK,nPixels);
+      pixel->set(Pixel::Color().RGB(0,0,0,0),nPixels);
     } else {
       Effects[effect.getNewVal()-1]->init();
       alarmTime=millis()+Effects[effect.getNewVal()-1]->update();
@@ -151,7 +148,7 @@ struct Pixel_Strand : Service::LightBulb {      // Addressable RGBW Pixel Strand
     void init() override {
       float level=px->V.getNewVal<float>();
       for(int i=0;i<px->nPixels;i++,level*=0.8){
-        px->colors[px->nPixels+i-1]=Pixel::HSV(px->H.getNewVal<float>(),px->S.getNewVal<float>(),level);
+        px->colors[px->nPixels+i-1].HSV(px->H.getNewVal<float>(),px->S.getNewVal<float>(),level);
         px->colors[px->nPixels-i-1]=px->colors[px->nPixels+i-1];      
       }
     }
@@ -176,7 +173,7 @@ struct Pixel_Strand : Service::LightBulb {      // Addressable RGBW Pixel Strand
   
     ManualControl(Pixel_Strand *px) : SpecialEffect{px,"Manual Control"} {}
 
-    void init() override {px->pixel->set(Pixel::HSV(px->H.getNewVal<float>(),px->S.getNewVal<float>(),px->V.getNewVal<float>()),px->nPixels);}
+    void init() override {px->pixel->set(Pixel::Color().HSV(px->H.getNewVal<float>(),px->S.getNewVal<float>(),px->V.getNewVal<float>()),px->nPixels);}
   };
 
 //////////////
@@ -187,7 +184,7 @@ struct Pixel_Strand : Service::LightBulb {      // Addressable RGBW Pixel Strand
 
     uint32_t update() override {
       for(int i=0;i<px->nPixels;i++)
-        px->colors[i]=Pixel::HSV((esp_random()%6)*60,100,px->V.getNewVal<float>());
+        px->colors[i].HSV((esp_random()%6)*60,100,px->V.getNewVal<float>());
       px->pixel->set(px->colors,px->nPixels);
       return(1000);
     }
@@ -208,23 +205,23 @@ struct Pixel_Strand : Service::LightBulb {      // Addressable RGBW Pixel Strand
 
     void init() override {
       for(int i=0;i<px->nPixels;i++){
-        px->colors[i]=BLANK;
+        px->colors[i].RGB(0,0,0,0);
         dir[i]=0;
       }
     }
 
     uint32_t update() override {
       for(int i=0;i<px->nPixels;i++){
-        if(px->colors[i]==Pixel::RGB(0,0,0,0)){
+        if(px->colors[i]==Pixel::Color().RGB(0,0,0,0)){
           if(esp_random()%200==0)
             dir[i]=15;
           else
             dir[i]=0;
         } else
-        if(px->colors[i]==Pixel::RGB(0,0,0,255) || esp_random()%10==0){
+        if(px->colors[i]==Pixel::Color().RGB(0,0,0,255) || esp_random()%10==0){
           dir[i]=-15;
         }
-        px->colors[i]+=Pixel::RGB(0,0,0,dir[i]);
+        px->colors[i]+=Pixel::Color().RGB(0,0,0,dir[i]);
       }
       px->pixel->set(px->colors,px->nPixels);
     return(50);  
@@ -247,11 +244,11 @@ struct Pixel_Strand : Service::LightBulb {      // Addressable RGBW Pixel Strand
     uint32_t update() override {
       for(int i=0;i<px->nPixels;i++){
         if(i==phase)
-          px->colors[i]=Pixel::HSV(H,100,px->V.getNewVal<float>());
+          px->colors[i].HSV(H,100,px->V.getNewVal<float>());
         else if(i==px->nPixels-1-phase)
-          px->colors[i]=Pixel::HSV(H+180,100,px->V.getNewVal<float>());
+          px->colors[i].HSV(H+180,100,px->V.getNewVal<float>());
         else
-          px->colors[i]=BLANK;
+          px->colors[i].RGB(0,0,0,0);
       }
 
       px->pixel->set(px->colors,px->nPixels);
@@ -290,14 +287,14 @@ void setup() {
       new Characteristic::Name("Holiday Lights");
       new Characteristic::Manufacturer("HomeSpan");
       new Characteristic::SerialNumber("123-ABC");
-      new Characteristic::Model("NeoPixel RGBW LEDs");
+      new Characteristic::Model("NeoPixel 60 RGBW LEDs");
       new Characteristic::FirmwareRevision("1.0");
       new Characteristic::Identify();
 
   new Service::HAPProtocolInformation();
     new Characteristic::Version("1.1.0");
 
-  new Pixel_Strand(NEOPIXEL_PIN,NUM_PIXELS);
+  new Pixel_Strand(NEOPIXEL_RGBW_PIN,60);
 
 }
 
