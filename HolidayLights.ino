@@ -35,6 +35,8 @@
 // a generic custom Characteristic.  The sketch uses a custom Characterstic to create
 // a "selector" button that enables to the user to select which special effect to run
 
+#define REQUIRED VERSION(1,5,0)
+
 #include "HomeSpan.h"
 #include "extras/Pixel.h"                       // include the HomeSpan Pixel class
 
