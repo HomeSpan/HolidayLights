@@ -35,24 +35,13 @@
 // a generic custom Characteristic.  The sketch uses a custom Characterstic to create
 // a "selector" button that enables to the user to select which special effect to run
 
-#define REQUIRED VERSION(1,5,0)
+#ifndef HS_FEATHER_PINS
+  #define NEOPIXEL_RGBW_PIN    32        // CHANGE THIS PIN TO MATCH YOUR BOARD
+#else
+  #define NEOPIXEL_RGBW_PIN    F32       // FEATHER PIN MAPPING - FOR HOMESPAN DEVELOPER USE ONLY
+#endif
 
 #include "HomeSpan.h"
-#include "extras/Pixel.h"                       // include the HomeSpan Pixel class
-
-#if defined(CONFIG_IDF_TARGET_ESP32)
-
-  #define NEOPIXEL_RGBW_PIN      32
-
-#elif defined(CONFIG_IDF_TARGET_ESP32S2)
-
-  #define NEOPIXEL_RGBW_PIN      38
-
-#elif defined(CONFIG_IDF_TARGET_ESP32C3)
-
-  #define NEOPIXEL_RGBW_PIN      2
-
-#endif
 
 CUSTOM_CHAR(Selector, 00000001-0001-0001-0001-46637266EA00, PR+PW+EV, UINT8, 1, 1, 5, false);      // create Custom Characteristic to "select" special effects via Eve App
 
@@ -90,7 +79,7 @@ struct Pixel_Strand : Service::LightBulb {      // Addressable RGBW Pixel Strand
   
   Pixel_Strand(int pin, int nPixels) : Service::LightBulb(){
 
-    pixel=new Pixel(pin,true);                // creates RGBW pixel LED on specified pin using default timing parameters suitable for most SK68xx LEDs
+    pixel=new Pixel(pin,"GRBW");              // creates RGBW pixel LED on specified pin using default timing parameters suitable for most SK68xx LEDs
     this->nPixels=nPixels;                    // store number of Pixels in Strand
 
     Effects.push_back(new ManualControl(this));
@@ -286,17 +275,9 @@ void setup() {
       
   new SpanAccessory();
     new Service::AccessoryInformation();
-      new Characteristic::Name("Holiday Lights");
-      new Characteristic::Manufacturer("HomeSpan");
-      new Characteristic::SerialNumber("123-ABC");
-      new Characteristic::Model("NeoPixel 60 RGBW LEDs");
-      new Characteristic::FirmwareRevision("1.0");
       new Characteristic::Identify();
 
-  new Service::HAPProtocolInformation();
-    new Characteristic::Version("1.1.0");
-
-  new Pixel_Strand(NEOPIXEL_RGBW_PIN,60);
+    new Pixel_Strand(NEOPIXEL_RGBW_PIN,60);
 
 }
 
